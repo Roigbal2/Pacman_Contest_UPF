@@ -154,7 +154,7 @@ class AlphaBetaAgent(CaptureAgent):
 
             if dist_closest_threat <= 1: return -float('inf') 
             
-            if not agent_state.is_pacman and threats and dist_closest_threat <= 5:
+            if not agent_state.is_pacman and threats and dist_closest_threat <= 2:
                 openings = self.get_boundary_openings(game_state)
                 if openings:
                     closest_threat_pos = threats[0].get_position()
@@ -163,7 +163,7 @@ class AlphaBetaAgent(CaptureAgent):
                     heuristic_score -= dist_to_safe_entry * 200 
 
             elif dist_closest_threat <= 2: 
-                heuristic_score -= 20000 / (dist_closest_threat + 0.1)
+                heuristic_score -= 4000 / (dist_closest_threat + 0.1)
 
             needs_return = False
             if agent_state.num_carrying >= 3: needs_return = True
