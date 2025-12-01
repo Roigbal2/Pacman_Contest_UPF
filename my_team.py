@@ -1,6 +1,4 @@
 import random
-import util
-import time
 from capture_agents import CaptureAgent
 from game import Directions
 
