@@ -85,33 +85,24 @@ class AlphaBetaAgent(CaptureAgent):
             best_score = -float('inf')
             for a in legal_moves:
                 successor_game_state = game_state.generate_successor(next_agent, a)
-
                 next_next_is_enemy = ((next_agent + 1) % num_agents not in self.get_team(game_state))
-                
                 score = self.alpha_beta(successor_game_state, next_depth, next_agent, not next_next_is_enemy, alpha, beta)
-                
                 best_score = max(best_score, score)
                 alpha = max(alpha, best_score)
-                
-                if beta <= alpha: 
-                    break 
+                if beta <= alpha: break 
             return best_score
         else:
             best_score = float('inf')
             for a in legal_moves:
                 successor_game_state = game_state.generate_successor(next_agent, a)
                 next_next_is_enemy = ((next_agent + 1) % num_agents not in self.get_team(game_state))
-                
                 score = self.alpha_beta(successor_game_state, next_depth, next_agent, not next_next_is_enemy, alpha, beta)
-                
                 best_score = min(best_score, score)
                 beta = min(beta, best_score)
-                if beta <= alpha: 
-                    break 
+                if beta <= alpha: break 
             return best_score
 
     def calculate_heuristic_score(self, game_state):
-        
         agent_state = game_state.get_agent_state(self.index)
         agent_pos = agent_state.get_position()
         
@@ -123,7 +114,6 @@ class AlphaBetaAgent(CaptureAgent):
         else: 
             winning = current_score < 0
             
-
         if winning:
             current_role = 'D' 
         else:
@@ -143,16 +133,9 @@ class AlphaBetaAgent(CaptureAgent):
                     my_progress = map_w - agent_pos[0]
                     mate_progress = map_w - teammate_pos[0]
 
-                if my_progress > mate_progress:
-                    current_role = 'O'
-                elif my_progress < mate_progress: 
-                    current_role = 'D'
-                else: 
-                    if self.index < teammate_index:
-                        current_role = 'O'
-                    else:
-                        current_role = 'D'
-
+                if my_progress > mate_progress: current_role = 'O'
+                elif my_progress < mate_progress: current_role = 'D'
+                else: current_role = 'O' if self.index < teammate_index else 'D'
 
         if self.is_team_1:
             heuristic_score = current_score
@@ -162,37 +145,34 @@ class AlphaBetaAgent(CaptureAgent):
         
         food_list = self.get_food(game_state).as_list()
         opponents = [game_state.get_agent_state(i) for i in self.get_opponents(game_state)]
-        dist_to_base = self.get_distance_to_boundary(game_state, agent_pos)
-
         
         if current_role == 'O':
-            
             threats = [a for a in opponents if not a.is_pacman and a.get_position() and a.scared_timer < 3]
             dist_closest_threat = 9999
             if threats:
                 dist_closest_threat = min([self.get_maze_distance(agent_pos, g.get_position()) for g in threats])
 
-            if dist_closest_threat <= 1: 
-                return -float('inf') 
+            if dist_closest_threat <= 1: return -float('inf') 
             
-            if dist_closest_threat <= 2: 
+            if not agent_state.is_pacman and threats and dist_closest_threat <= 5:
+                openings = self.get_boundary_openings(game_state)
+                if openings:
+                    closest_threat_pos = threats[0].get_position()
+                    best_opening = max(openings, key=lambda x: self.get_maze_distance(x, closest_threat_pos))
+                    dist_to_safe_entry = self.get_maze_distance(agent_pos, best_opening)
+                    heuristic_score -= dist_to_safe_entry * 200 
+
+            elif dist_closest_threat <= 2: 
                 heuristic_score -= 20000 / (dist_closest_threat + 0.1)
 
             needs_return = False
-            
-            if agent_state.num_carrying >= 3:
-                needs_return = True
-                
-            elif len(food_list) <= 2:
-                needs_return = True
-                
-            elif agent_state.num_carrying > 0 and game_state.data.timeleft < 100:
-                needs_return = True
-                
-            elif agent_state.num_carrying > 0 and dist_closest_threat <= 5:
-                needs_return = True
+            if agent_state.num_carrying >= 3: needs_return = True
+            elif len(food_list) <= 2: needs_return = True
+            elif agent_state.num_carrying > 0 and game_state.data.timeleft < 100: needs_return = True
+            elif agent_state.num_carrying > 0 and dist_closest_threat <= 5: needs_return = True
 
             if needs_return:
+                dist_to_base = self.get_distance_to_boundary(game_state, agent_pos)
                 heuristic_score += 50000 
                 heuristic_score -= dist_to_base * 500 
             else:
@@ -202,35 +182,50 @@ class AlphaBetaAgent(CaptureAgent):
                     heuristic_score -= len(food_list) * 50
 
         else:
-            
             if agent_state.is_pacman:
                 heuristic_score -= 10000 
-                
+            
             invaders = [a for a in opponents if a.get_position() and a.is_pacman]
             
+            if len(invaders) == 0:
+                 heuristic_score += 5000
+
             if agent_state.scared_timer > 0:
                 if invaders:
                     dists = [self.get_maze_distance(agent_pos, a.get_position()) for a in invaders]
                     heuristic_score += min(dists) * 1000 
                 else:
+                    dist_to_base = self.get_distance_to_boundary(game_state, agent_pos)
                     heuristic_score -= dist_to_base 
                 return heuristic_score
 
             if len(invaders) > 0:
                 dists = [self.get_maze_distance(agent_pos, a.get_position()) for a in invaders]
-                min_dist = min(dists)
-                heuristic_score -= min_dist * 1000 
+                heuristic_score -= min(dists) * 1000 
+            
             else:
-                heuristic_score -= dist_to_base 
+                openings = self.get_boundary_openings(game_state)
+                openings.sort(key=lambda x: x[1])
+                
+                if openings:
+                    offset = self.index * (len(openings) // 2)
+                    target_index = ( (game_state.data.timeleft // 30) + offset ) % len(openings)
+                    patrol_target = openings[target_index]
+                    dist = self.get_maze_distance(agent_pos, patrol_target)
+                    heuristic_score -= dist * 10
 
         return heuristic_score
 
     def get_distance_to_boundary(self, game_state, current_pos):
+        boundary_spaces = self.get_boundary_openings(game_state)
+        if not boundary_spaces: return 9999
+        return min([self.get_maze_distance(current_pos, t) for t in boundary_spaces])
+
+    def get_boundary_openings(self, game_state):
         target_x = self.map_boundary
         height = game_state.data.layout.height
         boundary_spaces = []
         for y in range(1, height - 1):
              if not game_state.has_wall(target_x, y):
                  boundary_spaces.append((target_x, y))
-        if not boundary_spaces: return 9999
-        return min([self.get_maze_distance(current_pos, t) for t in boundary_spaces])
+        return boundary_spaces
